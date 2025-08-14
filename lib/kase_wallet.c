@@ -1,0 +1,44 @@
+
+// kasia_wallet.c
+// Minimal implementation of wallet recovery from BIP39 seed
+
+#include <stdint.h>
+#include <stddef.h>
+#include <string.h>
+#include "kase_wallet.h"
+
+// External dependencies you must provide or link to:
+// - BIP39 wordlist + mnemonic decoding
+// - BIP32 key derivation for secp256k1 (hardened path)
+// - Kaspa-style address encoding (base58 or bech32, depending)
+
+int kase_recover_wallet_from_seed(const char* mnemonic,
+                                   const char* optional_passphrase,
+                                   kase_wallet_t* out) {
+    if (!mnemonic || !out) return KASE_ERR_INVALID;
+
+    uint8_t seed[64]; // 512 bits
+    size_t seed_len = 64;
+
+    // Step 1: Convert mnemonic to seed (BIP39)
+    if (kase_bip39_to_seed(mnemonic, optional_passphrase, seed) != 0)
+        return KASE_ERR_INVALID;
+
+    // Step 2: Derive master key from seed (BIP32)
+    uint8_t privkey[32], pubkey[33];
+    if (kase_bip32_derive_key(seed, seed_len, privkey, pubkey) != 0)
+        return KASE_ERR_KEYGEN;
+
+    // Step 3: Derive Kaspa address from public key
+    char address[128];
+    if (kase_pubkey_to_kaspa_address(pubkey, address, sizeof(address)) != 0)
+        return KASE_ERR_ENCODE;
+
+    // Fill output structure
+    memcpy(out->priv_key, privkey, 32);
+    memcpy(out->pub_key, pubkey, 33);
+    strncpy(out->kaspa_address, address, sizeof(out->kaspa_address) - 1);
+    out->kaspa_address[sizeof(out->kaspa_address) - 1] = '\0';
+
+    return KASE_OK;
+}
