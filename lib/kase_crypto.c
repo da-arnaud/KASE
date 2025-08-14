@@ -4,7 +4,7 @@
 
 #include <string.h>
 #include <stdio.h>
-#include "kasia_wallet.h"
+#include "kase_wallet.h"
 
 // Include trezor-crypto headers
 #include "bip39.h"
@@ -15,21 +15,21 @@
 #include "sha2.h"
 #include "base58.h"
 
-int kasia_bip39_to_seed(const char* mnemonic, const char* passphrase, uint8_t* seed_out) {
-    if (!mnemonic || !seed_out) return KASIA_ERR_INVALID;
+int kase_bip39_to_seed(const char* mnemonic, const char* passphrase, uint8_t* seed_out) {
+    if (!mnemonic || !seed_out) return KASE_ERR_INVALID;
 
     mnemonic_to_seed(mnemonic, passphrase ? passphrase : "", seed_out, NULL);
-    return KASIA_OK;
+    return KASE_OK;
 }
 
-int kasia_bip32_derive_key(const uint8_t* seed, size_t seed_len,
+int kase_bip32_derive_key(const uint8_t* seed, size_t seed_len,
                            uint8_t* privkey_out, uint8_t* pubkey_out) {
     if (!seed || seed_len != 64 || !privkey_out || !pubkey_out)
-        return KASIA_ERR_INVALID;
+        return KASE_ERR_INVALID;
 
     HDNode node;
     if (hdnode_from_seed(seed, seed_len, SECP256K1_NAME, &node) == 0)
-        return KASIA_ERR_KEYGEN;
+        return KASE_ERR_KEYGEN;
 
     // Derivation path: m/44'/111'/0'/0/0  (111 = Kaspa BIP44 coin type)
     hdnode_private_ckd_prime(&node, 44);
@@ -42,11 +42,11 @@ int kasia_bip32_derive_key(const uint8_t* seed, size_t seed_len,
     memcpy(privkey_out, node.private_key, 32);
     memcpy(pubkey_out, node.public_key, 33); // compressed
 
-    return KASIA_OK;
+    return KASE_OK;
 }
 
-int kasia_pubkey_to_kaspa_address(const uint8_t* pubkey, char* address_out, size_t max_len) {
-    if (!pubkey || !address_out || max_len < 64) return KASIA_ERR_INVALID;
+int kase_pubkey_to_kaspa_address(const uint8_t* pubkey, char* address_out, size_t max_len) {
+    if (!pubkey || !address_out || max_len < 64) return KASE_ERR_INVALID;
 
     uint8_t hash160[20];
     uint8_t sha256[32];
@@ -60,7 +60,7 @@ int kasia_pubkey_to_kaspa_address(const uint8_t* pubkey, char* address_out, size
 
     int len = base58_encode_check(addr_bin, 21, HASHER_SHA2D, address_out, max_len);
     if (len == 0)
-        return KASIA_ERR_ENCODE;
+        return KASE_ERR_ENCODE;
     
     if (len < max_len) {
         address_out[len] = '\0';  // <-- Ajoute ce garde-fou
@@ -68,5 +68,5 @@ int kasia_pubkey_to_kaspa_address(const uint8_t* pubkey, char* address_out, size
         address_out[max_len - 1] = '\0'; // En cas de dépassement
     }
 
-    return KASIA_OK;
+    return KASE_OK;
 }
