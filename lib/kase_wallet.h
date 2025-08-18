@@ -23,6 +23,7 @@ typedef struct {
     uint8_t priv_key[32];
     uint8_t pub_key[33]; // compressed
     char kaspa_address[128]; // bech32 or base58
+    char mnemonic[256]; // phrase mnémonique BIP39
 } kase_wallet_t;
 
 /**
@@ -32,6 +33,8 @@ int kase_recover_wallet_from_seed(const char* mnemonic,
                                    const char* optional_passphrase,
                                    kase_wallet_t* out);
 
+
+int kase_generate_wallet(kase_wallet_t* out);
 /**
  */
 #ifdef __cplusplus

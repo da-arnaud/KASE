@@ -6,6 +6,7 @@
 #include <stddef.h>
 #include <string.h>
 #include "kase_wallet.h"
+#include "kase_bip39.h"
 
 // External dependencies you must provide or link to:
 // - BIP39 wordlist + mnemonic decoding
@@ -39,6 +40,43 @@ int kase_recover_wallet_from_seed(const char* mnemonic,
     memcpy(out->pub_key, pubkey, 33);
     strncpy(out->kaspa_address, address, sizeof(out->kaspa_address) - 1);
     out->kaspa_address[sizeof(out->kaspa_address) - 1] = '\0';
+
+    return KASE_OK;
+}
+
+
+int kase_generate_wallet(kase_wallet_t* out) {
+    if (!out) return KASE_ERR_INVALID;
+
+    // Step 1: Générer une phrase mnémonique (BIP39)
+    char mnemonic[256];
+    if (kase_bip39_generate_mnemonic(mnemonic, sizeof(mnemonic)) != 0)
+        return KASE_ERR_KEYGEN;
+
+    // Step 2: Convertir en seed (sans passphrase)
+    uint8_t seed[64];
+    if (kase_bip39_to_seed(mnemonic, "", seed) != 0)
+        return KASE_ERR_INVALID;
+
+    // Step 3: Dériver les clés (BIP32)
+    uint8_t privkey[32], pubkey[33];
+    if (kase_bip32_derive_key(seed, 64, privkey, pubkey) != 0)
+        return KASE_ERR_KEYGEN;
+
+    // Step 4: Générer l'adresse Kaspa
+    char address[128];
+    if (kase_pubkey_to_kaspa_address(pubkey, address, sizeof(address)) != 0)
+        return KASE_ERR_ENCODE;
+    
+
+
+    // Step 5: Remplir la structure complète
+    memcpy(out->priv_key, privkey, 32);
+    memcpy(out->pub_key, pubkey, 33);
+    strncpy(out->kaspa_address, address, sizeof(out->kaspa_address) - 1);
+    out->kaspa_address[sizeof(out->kaspa_address) - 1] = '\0';
+    strncpy(out->mnemonic, mnemonic, sizeof(out->mnemonic) - 1);
+    out->mnemonic[sizeof(out->mnemonic) - 1] = '\0';
 
     return KASE_OK;
 }

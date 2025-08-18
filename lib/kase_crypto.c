@@ -14,6 +14,8 @@
 #include "ripemd160.h"
 #include "sha2.h"
 #include "base58.h"
+#include "segwit_addr.h"
+#include "kase_bech32_kaspa.h"
 
 int kase_bip39_to_seed(const char* mnemonic, const char* passphrase, uint8_t* seed_out) {
     if (!mnemonic || !seed_out) return KASE_ERR_INVALID;
@@ -48,25 +50,34 @@ int kase_bip32_derive_key(const uint8_t* seed, size_t seed_len,
 int kase_pubkey_to_kaspa_address(const uint8_t* pubkey, char* address_out, size_t max_len) {
     if (!pubkey || !address_out || max_len < 64) return KASE_ERR_INVALID;
 
-    uint8_t hash160[20];
-    uint8_t sha256[32];
-    sha256_Raw(pubkey, 33, sha256);
-    ripemd160(sha256, 32, hash160);
+    // 1. Hash SHA256 de la clé publique
+        uint8_t sha256[32];
+        sha256_Raw(pubkey, 33, sha256);
+    //ripemd160(sha256, 32, hash160);
 
-    // Prefix for Kaspa mainnet: 0x08
-    uint8_t addr_bin[21];
-    addr_bin[0] = 0x08;
-    memcpy(addr_bin + 1, hash160, 20);
-
-    int len = base58_encode_check(addr_bin, 21, HASHER_SHA2D, address_out, max_len);
-    if (len == 0)
-        return KASE_ERR_ENCODE;
+    // 2. Utiliser la nouvelle fonction Kaspa native
+        int result = kaspa_encode_address(sha256, "kaspa", address_out);
     
-    if (len < max_len) {
-        address_out[len] = '\0';  // <-- Ajoute ce garde-fou
-    } else {
-        address_out[max_len - 1] = '\0'; // En cas de dépassement
-    }
+    if (result != KASE_OK) {
+            return KASE_ERR_ENCODE;
+        }
+        
+        
+    
+    const char* test_addr = "kaspa:qpat6sx6ucnskjm32nheac4e8rexur8accv2f4cmqsvvgr9zv0uujesjzvgl5"; // Une vraie adresse
+    uint8_t decoded[64];
+    size_t decoded_len;
+    char hrp[10];
+    bech32_encoding enc;
 
-    return KASE_OK;
+    //bech32_encoding bech32_decode(char* hrp, uint8_t *data, size_t *data_len, const char *input)
+    if (bech32_decode(hrp, decoded, &decoded_len, test_addr)) {
+        printf("Vraie adresse décodée (%zu bytes): ", decoded_len);
+        for(size_t i = 0; i < decoded_len; i++) printf("%02x", decoded[i]);
+        printf("\n");
+    }
+    else
+        printf("Somethign went wrong");
+
+        return KASE_OK;
 }

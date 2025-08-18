@@ -10,4 +10,7 @@
 
 #include <stdio.h>
 
+int kase_bip39_generate_mnemonic(char* out, size_t out_len);
+
+
 #endif /* kase_bip39_h */

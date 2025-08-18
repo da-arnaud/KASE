@@ -25,6 +25,7 @@ extern "C" {
 #define KASE_ERR_DECRYPT -3
 #define KASE_ERR_SERIALIZE -4
 #define KASE_ERR_DESERIALIZE -5
+#define KASE_ERR_KEYGEN     -6
 
 // --- Core types ---
 
