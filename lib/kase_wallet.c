@@ -13,6 +13,19 @@
 // - BIP32 key derivation for secp256k1 (hardened path)
 // - Kaspa-style address encoding (base58 or bech32, depending)
 
+// Global variable for current network
+kase_network_type_t g_kase_network = KASE_NETWORK_TESTNET; // Default testnet
+
+int kase_set_network(kase_network_type_t network) {
+    g_kase_network = network;
+    return KASE_OK;
+}
+
+kase_network_type_t kase_get_network(void) {
+    return g_kase_network;
+}
+
+
 int kase_recover_wallet_from_seed(const char* mnemonic,
                                    const char* optional_passphrase,
                                    kase_wallet_t* out) {

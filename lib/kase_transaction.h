@@ -5,17 +5,25 @@
 //  Created by Daniel Arnaud on 18/08/2025.
 //
 
-#include <stdio.h>
-
 #ifndef KASE_TRANSACTION_H
 #define KASE_TRANSACTION_H
 
 #include <stdint.h>
 #include <stddef.h>
+#include <string.h>
+
+#include <curl/curl.h>  // For http requests
+#include <json-c/json.h> // For JSON parser
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+// Struct for HTTP response
+typedef struct {
+    char* data;
+    size_t size;
+} http_response_t;
 
 // Structures pour les transactions Kaspa
 typedef struct {
@@ -45,6 +53,26 @@ typedef struct {
     char transaction_id[65];
 } kase_transaction_result_t;
 
+// Fonction d'initialisation sécurisée
+/*
+static inline void kase_transaction_result_init(kase_transaction_result_t* result) {
+    if (result) {
+        memset(result, 0, sizeof(kase_transaction_result_t));
+    }
+}
+ */
+
+static inline void kase_transaction_result_init(kase_transaction_result_t* result) {
+    if (result) {
+        result->success = 0;
+        memset(result->error, 0, sizeof(result->error));
+        memset(result->transaction_id, 0, sizeof(result->transaction_id));
+    }
+}
+
+static int http_post_request(const char* url, const char* json_data, http_response_t* response);
+static size_t write_callback(void* contents, size_t size, size_t nmemb, http_response_t* response);
+
 // Fonctions principales
 int kase_get_utxos(const char* address, kase_utxo_t** utxos, size_t* count);
 int kase_get_balance(const char* address, uint64_t* balance);
@@ -63,4 +91,4 @@ double kase_sompi_to_kas(uint64_t sompi);
 }
 #endif
 
-#endif /* kase_transaction_h */
+#endif
