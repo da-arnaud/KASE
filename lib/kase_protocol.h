@@ -13,19 +13,11 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include "kase_types.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-// Error codes
-#define KASE_OK 0
-#define KASE_ERR_INVALID -1
-#define KASE_ERR_ENCRYPT -2
-#define KASE_ERR_DECRYPT -3
-#define KASE_ERR_SERIALIZE -4
-#define KASE_ERR_DESERIALIZE -5
-#define KASE_ERR_KEYGEN     -6
 
 // --- Core types ---
 

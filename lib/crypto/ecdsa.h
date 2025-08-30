@@ -138,4 +138,6 @@ ecdsa_tweak_pubkey_result ecdsa_tweak_pubkey(const ecdsa_curve *curve,
                                              const uint8_t *pub_key,
                                              const uint8_t *tweak,
                                              uint8_t *tweaked_pub_key);
+
+void point_subtract(const ecdsa_curve *curve, const curve_point *b, curve_point *a);
 #endif

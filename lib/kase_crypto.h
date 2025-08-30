@@ -7,16 +7,13 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include "kase_types.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-// Return codes
-#define KASE_OK           0
-#define KASE_ERR_INVALID -1
-#define KASE_ERR_KEYGEN  -2
-#define KASE_ERR_ENCODE  -3
+
 
 // BIP39: Convert mnemonic phrase to 64-byte seed
 int kase_bip39_to_seed(const char* mnemonic, const char* passphrase, uint8_t* seed_out);
@@ -26,7 +23,7 @@ int kase_bip32_derive_key(const uint8_t* seed, size_t seed_len,
                            uint8_t* privkey_out, uint8_t* pubkey_out);
 
 // Kaspa Address: Compute kaspa address (base58) from compressed public key
-int kase_pubkey_to_kaspa_address(const uint8_t* pubkey, char* address_out, size_t max_len);
+int kase_pubkey_to_kaspa_address(const uint8_t* pubkey, char* address_out, size_t max_len, kase_network_type_t network);
 
 #ifdef __cplusplus
 }

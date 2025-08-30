@@ -37,4 +37,7 @@ size_t kaspa_checksum_to_5bit(uint64_t checksum, uint8_t* output);
 // Fonction encodage adresse
 int kaspa_encode_address(const uint8_t* pubkey_hash, const char* prefix, char* address_out);
 
+// Fonction de décodage d'adresse Kaspa
+int kaspa_decode_address(const char* address, uint8_t* pubkey_hash_out, char* prefix_out);
+
 #endif /* kase_bech32_kaspa_h */

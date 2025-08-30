@@ -19,18 +19,7 @@ extern "C" {
 #include <stddef.h>
 #include "kase_crypto.h"
 
-// Network types
-typedef enum {
-    KASE_NETWORK_MAINNET = 0,
-    KASE_NETWORK_TESTNET = 1
-} kase_network_type_t;
-
-typedef struct {
-    uint8_t priv_key[32];
-    uint8_t pub_key[33]; // compressed
-    char kaspa_address[128]; // bech32 or base58
-    char mnemonic[256]; // phrase mnémonique BIP39
-} kase_wallet_t;
+#include "kase_types.h"
 
 // Global network variables
 extern kase_network_type_t g_kase_network;
@@ -44,10 +33,11 @@ kase_network_type_t kase_get_network(void);
  */
 int kase_recover_wallet_from_seed(const char* mnemonic,
                                    const char* optional_passphrase,
-                                   kase_wallet_t* out);
+                                   kase_wallet_t* out,
+                                   kase_network_type_t network);
 
 
-int kase_generate_wallet(kase_wallet_t* out);
+int kase_generate_wallet(kase_wallet_t* out, kase_network_type_t network);
 /**
  */
 #ifdef __cplusplus

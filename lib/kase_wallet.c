@@ -14,7 +14,7 @@
 // - Kaspa-style address encoding (base58 or bech32, depending)
 
 // Global variable for current network
-kase_network_type_t g_kase_network = KASE_NETWORK_TESTNET; // Default testnet
+kase_network_type_t g_kase_network = KASE_NETWORK_TESTNET_10; // Default testnet
 
 int kase_set_network(kase_network_type_t network) {
     g_kase_network = network;
@@ -28,7 +28,8 @@ kase_network_type_t kase_get_network(void) {
 
 int kase_recover_wallet_from_seed(const char* mnemonic,
                                    const char* optional_passphrase,
-                                   kase_wallet_t* out) {
+                                   kase_wallet_t* out,
+                                   kase_network_type_t network) {
     if (!mnemonic || !out) return KASE_ERR_INVALID;
 
     uint8_t seed[64]; // 512 bits
@@ -45,7 +46,7 @@ int kase_recover_wallet_from_seed(const char* mnemonic,
 
     // Step 3: Derive Kaspa address from public key
     char address[128];
-    if (kase_pubkey_to_kaspa_address(pubkey, address, sizeof(address)) != 0)
+    if (kase_pubkey_to_kaspa_address(pubkey, address, sizeof(address), network) != 0)
         return KASE_ERR_ENCODE;
 
     // Fill output structure
@@ -58,7 +59,7 @@ int kase_recover_wallet_from_seed(const char* mnemonic,
 }
 
 
-int kase_generate_wallet(kase_wallet_t* out) {
+int kase_generate_wallet(kase_wallet_t* out, kase_network_type_t network) {
     if (!out) return KASE_ERR_INVALID;
 
     // Step 1: Générer une phrase mnémonique (BIP39)
@@ -78,8 +79,8 @@ int kase_generate_wallet(kase_wallet_t* out) {
 
     // Step 4: Générer l'adresse Kaspa
     char address[128];
-    if (kase_pubkey_to_kaspa_address(pubkey, address, sizeof(address)) != 0)
-        return KASE_ERR_ENCODE;
+    if (kase_pubkey_to_kaspa_address(pubkey, address, sizeof(address), network) != 0)
+            return KASE_ERR_ENCODE;
     
 
 

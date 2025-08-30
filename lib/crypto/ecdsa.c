@@ -1377,3 +1377,15 @@ ecdsa_tweak_pubkey_result ecdsa_tweak_pubkey(const ecdsa_curve *curve,
 #endif
   return tc_ecdsa_tweak_pubkey(curve, pub_key, tweak, tweaked_pub_key);
 }
+
+
+void point_subtract(const ecdsa_curve *curve, const curve_point *b, curve_point *a) {
+    curve_point b_neg;
+    point_copy(b, &b_neg);
+    
+    // Negate point: (x, y) -> (x, -y)
+    bn_subtract(&curve->prime, &b_neg.y, &b_neg.y);
+    
+    // Add negated point
+    point_add(curve, &b_neg, a);
+}
