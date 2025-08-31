@@ -7,6 +7,8 @@
 #include <string.h>
 #include "kase_wallet.h"
 #include "kase_bip39.h"
+#include "bip340.h"
+#include "kase_bech32_kaspa.h"
 
 // External dependencies you must provide or link to:
 // - BIP39 wordlist + mnemonic decoding
@@ -72,21 +74,27 @@ int kase_generate_wallet(kase_wallet_t* out, kase_network_type_t network) {
     if (kase_bip39_to_seed(mnemonic, "", seed) != 0)
         return KASE_ERR_INVALID;
 
-    // Step 3: Dériver les clés (BIP32)
-    uint8_t privkey[32], pubkey[33];
-    if (kase_bip32_derive_key(seed, 64, privkey, pubkey) != 0)
+    // Step 3: Dériver les clés secp256k1 (BIP32)
+    uint8_t secp_privkey[32], secp_pubkey[33];
+    if (kase_bip32_derive_key(seed, 64, secp_privkey, secp_pubkey) != 0)
         return KASE_ERR_KEYGEN;
 
-    // Step 4: Générer l'adresse Kaspa
-    char address[128];
-    if (kase_pubkey_to_kaspa_address(pubkey, address, sizeof(address), network) != 0)
-            return KASE_ERR_ENCODE;
+    // Step 4: NOUVEAU - Convertir en Schnorr avec correction BIP340
+    uint8_t schnorr_pubkey[32];
+    uint8_t corrected_privkey[32];
+    memcpy(corrected_privkey, secp_privkey, 32);
     
+    if (bip340_pubkey_create(schnorr_pubkey, corrected_privkey) != 1)
+        return KASE_ERR_KEYGEN;
 
+    // Step 5: Générer l'adresse Kaspa à partir de Schnorr
+    char address[128];
+    if (kaspa_pubkey_to_address(schnorr_pubkey, address, sizeof(address)) != 0)
+        return KASE_ERR_ENCODE;
 
-    // Step 5: Remplir la structure complète
-    memcpy(out->priv_key, privkey, 32);
-    memcpy(out->pub_key, pubkey, 33);
+    // Step 6: Remplir la structure avec les bonnes valeurs
+    memcpy(out->priv_key, corrected_privkey, 32);  // ← Clé privée CORRIGÉE
+    memcpy(out->pub_key, schnorr_pubkey, 32);      // ← Clé publique Schnorr 32 bytes
     strncpy(out->kaspa_address, address, sizeof(out->kaspa_address) - 1);
     out->kaspa_address[sizeof(out->kaspa_address) - 1] = '\0';
     strncpy(out->mnemonic, mnemonic, sizeof(out->mnemonic) - 1);

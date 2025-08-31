@@ -34,7 +34,7 @@ typedef enum {
 
 typedef struct {
     uint8_t priv_key[32];
-    uint8_t pub_key[33]; // compressed
+    uint8_t pub_key[32]; // compressed
     char kaspa_address[128]; // bech32 or base58
     char mnemonic[256]; // phrase mnémonique BIP39
 } kase_wallet_t;
