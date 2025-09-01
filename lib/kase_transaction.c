@@ -224,6 +224,8 @@ int kase_get_balance(const char* address, uint64_t* balance) {
     kase_utxo_t* utxos;
     size_t count;
     
+    printf("address in kase_get_balance: %s \n", address);
+    
     if (kase_get_utxos(address, &utxos, &count) != KASE_OK) {
         printf("❌ Erreur parsing JSON UTXOs,error calling kase_get_utxos\n");
         return KASE_ERR_INVALID;
@@ -245,6 +247,7 @@ int kase_create_transaction(const char* from_address,
                            kase_transaction_result_t* result) {
     
     // Initialisation sécurisée du résultat
+    
     
     if (result) {
         kase_transaction_result_init(result);
@@ -472,6 +475,7 @@ int kase_broadcast_transaction(const kase_transaction_t* tx, const uint8_t* priv
             return KASE_ERR_INVALID;
         }
         
+        
         // Debug du sighash calculé ***BEBUG***
         printf("   Calculated sighash: ");
         for (int k = 0; k < 32; k++) printf("%02x", sighash[k]);
@@ -483,8 +487,10 @@ int kase_broadcast_transaction(const kase_transaction_t* tx, const uint8_t* priv
         
         // 🚀 DÉRIVER LA CLÉ PUBLIQUE SCHNORR (BIP340)
         uint8_t public_key_schnorr[32];
+        int test = bip340_pubkey_create(public_key_schnorr, private_key);
         if (bip340_pubkey_create(public_key_schnorr, private_key) != 1) {
             printf("❌ Failed to derive Schnorr public key for input %zu\n", i);
+            
             // Cleanup
             free(kaspa_tx.inputs);
             for (size_t k = 0; k < kaspa_tx.outputs_count; k++) {
@@ -495,6 +501,19 @@ int kase_broadcast_transaction(const kase_transaction_t* tx, const uint8_t* priv
             free(utxos);
             return KASE_ERR_INVALID;
         }
+        // *** DEBUG ***
+        // Debug de la clé publique générée
+        printf("🔑 Debug clés:\n");
+        printf("   Private key: ");
+        for (int k = 0; k < 32; k++) printf("%02x", private_key[k]);
+        printf("\n");
+        printf("   Generated pubkey: ");
+        for (int k = 0; k < 32; k++) printf("%02x", public_key_schnorr[k]);
+        printf("\n");
+        printf("   UTXO script pubkey: %s\n", matching_utxo->script_public_key);
+        
+        
+        
         
         // Signer avec BIP340
         uint8_t signature[64];
@@ -511,27 +530,52 @@ int kase_broadcast_transaction(const kase_transaction_t* tx, const uint8_t* priv
             return KASE_ERR_INVALID;
         }
         
+    
+
+        // *** AJOUTE LE NOUVEAU DEBUG ICI ***
+        printf("🔑 DEBUG COMPLET:\n");
+        printf("   from_address: %s\n", sender_address);
+        printf("   private_key (hex): ");
+        for (int k = 0; k < 32; k++) printf("%02x", private_key[k]);
+        printf("\n");
+
+        // Générer l'adresse depuis la clé privée pour vérification
+        uint8_t derived_pubkey[32];
+        if (bip340_pubkey_create(derived_pubkey, private_key) == 1) {
+            printf("   derived_pubkey: ");
+            for (int k = 0; k < 32; k++) printf("%02x", derived_pubkey[k]);
+            printf("\n");
+            
+            char derived_address[128];
+            //kase_network_type_t network = get_kaspa_rpc_endpoint();
+            if (kaspa_pubkey_to_address(derived_pubkey, derived_address, sizeof(derived_address), g_kase_network) == KASE_OK) {
+                printf("   derived_address: %s\n", derived_address);
+                printf("   MATCH: %s\n", strcmp(derived_address, sender_address) == 0 ? "✅ OUI" : "❌ NON");
+            }
+        }
+        
+        
         // Debug de la signature générée  ***BEBUG***
         printf("   Generated signature: ");
         for (int k = 0; k < 64; k++) printf("%02x", signature[k]);
         printf("\n");
         
-        // 🎯 CONSTRUIRE LE SIGNATURE SCRIPT KASPA CORRECT
-        uint8_t sig_script[256];
+        // 🎯 SIGNATURE SCRIPT KASPA CORRECT - SEULEMENT SIGNATURE !
+        uint8_t sig_script[66];  // 1 + 64 + 1 = 66 bytes
         size_t sig_len = 0;
 
-        // Format push-only: OP_PUSHDATA(65) + signature(64) + sighash(1) + OP_PUSHDATA(32) + pubkey(32)
-
-        // 1. Push signature + sighash (65 bytes total)
-        sig_script[sig_len++] = 0x41; // OP_PUSHDATA 65 bytes
+        // Format: OP_DATA65 + signature(64) + sighash_type(1)
+        sig_script[sig_len++] = 0x41; // OP_DATA65 = 65 bytes
         memcpy(sig_script + sig_len, signature, 64);
         sig_len += 64;
         sig_script[sig_len++] = KASPA_SIG_HASH_ALL; // 0x01
 
+        // PAS DE PUBKEY dans signature_script !
+        // La pubkey est dans le script_public_key des UTXOs !
         // 2. Push clé publique (32 bytes)
-        sig_script[sig_len++] = 0x20; // OP_PUSHDATA 32 bytes
-        memcpy(sig_script + sig_len, public_key_schnorr, 32);
-        sig_len += 32;
+       // sig_script[sig_len++] = 0x20; // OP_PUSHDATA 32 bytes
+       // memcpy(sig_script + sig_len, public_key_schnorr, 32);
+        //sig_len += 32;
 
         // Debug de la clé publique  ***BEBUG***
         printf("   Public key: ");

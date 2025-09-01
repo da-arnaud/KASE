@@ -86,11 +86,18 @@ int kase_generate_wallet(kase_wallet_t* out, kase_network_type_t network) {
     
     if (bip340_pubkey_create(schnorr_pubkey, corrected_privkey) != 1)
         return KASE_ERR_KEYGEN;
+    
+    // 🔍 DEBUG: Afficher la clé Schnorr générée
+        printf("Generated Schnorr pubkey: "); // *** DEBUG ***
+        for(int i = 0; i < 32; i++) printf("%02x", schnorr_pubkey[i]);
+        printf("\n");
 
     // Step 5: Générer l'adresse Kaspa à partir de Schnorr
     char address[128];
-    if (kaspa_pubkey_to_address(schnorr_pubkey, address, sizeof(address)) != 0)
+    if (kaspa_pubkey_to_address(schnorr_pubkey, address, sizeof(address), network) != 0)
         return KASE_ERR_ENCODE;
+    
+    printf("Generated address: %s\n", address);  // *** DEBUG ***
 
     // Step 6: Remplir la structure avec les bonnes valeurs
     memcpy(out->priv_key, corrected_privkey, 32);  // ← Clé privée CORRIGÉE

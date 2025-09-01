@@ -9,6 +9,7 @@
 #define kase_bech32_kaspa_h
 
 #include <stdio.h>
+#include "kase_types.h"
 
 // Charset Kaspa (différent du bech32 standard)
 static const char KASPA_CHARSET[] = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
@@ -39,5 +40,11 @@ int kaspa_encode_address(const uint8_t* pubkey_hash, const char* prefix, char* a
 
 // Fonction de décodage d'adresse Kaspa
 int kaspa_decode_address(const char* address, uint8_t* pubkey_hash_out, char* prefix_out);
+
+// Helper pour conversion bits (si pas déjà présent)
+int bech32_convertbits(uint8_t* out, size_t* outlen, int outbits,
+                       const uint8_t* in, size_t inlen, int inbits, int pad);
+
+int kaspa_pubkey_to_address(const uint8_t* pubkey, char* address, size_t address_size, kase_network_type_t network);
 
 #endif /* kase_bech32_kaspa_h */

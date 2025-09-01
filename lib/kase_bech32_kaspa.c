@@ -9,6 +9,8 @@
 #include <string.h>
 #include <stdlib.h>
 #include "kase_protocol.h"
+#include "blake2b.h"
+#include "segwit_addr.h"
 
 // Convert 8bit array to 5bit array avec padding à droite
 size_t kaspa_conv8to5(const uint8_t* input, size_t input_len, uint8_t* output) {
@@ -25,13 +27,16 @@ size_t kaspa_conv8to5(const uint8_t* input, size_t input_len, uint8_t* output) {
         
         while (bits >= 5) {
             bits -= 5;
-            output[current_idx] = (buff >> bits) & 0x1F;
+            //output[current_idx] = (buff >> bits) & 0x1F;
+            output[current_idx] = (buff >> bits);
+            buff &= (1 << bits) - 1;
             current_idx++;
         }
     }
     
     if (bits > 0) {
-        output[current_idx] = (buff << (5 - bits)) & 0x1F;
+        //output[current_idx] = (buff << (5 - bits)) & 0x1F;
+        output[current_idx] = (buff << (5 - bits)); 
         current_idx++;
     }
     
@@ -85,23 +90,44 @@ uint64_t kaspa_checksum(const uint8_t* payload_5bit, size_t payload_len, const c
     size_t idx = 0;
     
     // 1. Ajouter préfixe en 5-bit
+    printf("DEBUG prefix 5bit: "); //*** DEBUG ***
     for (size_t i = 0; i < prefix_len; i++) {
-        full_data[idx++] = prefix[i] & 0x1F;
+        full_data[idx] = prefix[i] & 0x1F;
+        //full_data[idx] = (uint8_t)(prefix[i]) >> 2;
+        printf("%02x", full_data[idx]);
+        idx++;
     }
+    printf("\n");
     
     // 2. Séparateur (0)
     full_data[idx++] = 0;
+    printf("DEBUG separator: 00\n");  //*** DEBUG ***
     
     // 3. Payload 5-bit
+    printf("DEBUG payload_5bit: ");
     memcpy(full_data + idx, payload_5bit, payload_len);
+    
+    for(size_t i = 0; i < payload_len; i++) {   //*** DEBUG ***
+            printf("%02x", full_data[idx + i]);
+        }
+        printf("\n");
+    
     idx += payload_len;
     
     // 4. 8 zéros pour checksum
     memset(full_data + idx, 0, 8);
+    printf("DEBUG zeros: 00000000000000000000\n");
     idx += 8;
     
     // 5. Calcul polymod
+    printf("DEBUG total data for polymod (%zu bytes): ", idx);  // *** DEBUG ***
+    for(size_t i = 0; i < idx; i++) {
+            printf("%02x", full_data[i]);
+        }
+        printf("\n");
     uint64_t checksum = kaspa_polymod(full_data, idx);
+    
+    printf("DEBUG raw checksum: %016lx\n", checksum);
     
     free(full_data);
     return checksum;
@@ -109,11 +135,11 @@ uint64_t kaspa_checksum(const uint8_t* payload_5bit, size_t payload_len, const c
 
 // Conversion checksum en 5-bit
 size_t kaspa_checksum_to_5bit(uint64_t checksum, uint8_t* output) {
-    // Prendre les 5 derniers bytes du checksum (40 bits)
-    uint8_t checksum_bytes[5];
-    for (int i = 4; i >= 0; i--) {
-        checksum_bytes[4-i] = (checksum >> (i * 8)) & 0xFF;
-    }
+    // Prendre bytes 3-7 du checksum (comme Rust: [3..])
+        uint8_t checksum_bytes[5];
+        for (int i = 0; i < 5; i++) {
+            checksum_bytes[i] = (checksum >> ((4-i) * 8)) & 0xFF;
+        }
     
     // Convertir ces 5 bytes en 5-bit
     return kaspa_conv8to5(checksum_bytes, 5, output);
@@ -121,14 +147,45 @@ size_t kaspa_checksum_to_5bit(uint64_t checksum, uint8_t* output) {
 
 // Fonction encodage adresse
 int kaspa_encode_address(const uint8_t* pubkey_hash, const char* prefix, char* address_out) {
+    
+    printf("CHARSET CHECK: %s\n", KASPA_CHARSET);
+    printf("CHARSET LENGTH: %zu\n", strlen(KASPA_CHARSET));
+
+    // Vérifier que ton charset est exactement celui-ci
+    const char* expected = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
+    if (strcmp(KASPA_CHARSET, expected) == 0) {
+        printf("✅ CHARSET CORRECT\n");
+    } else {
+        printf("❌ CHARSET INCORRECT!\n");
+        printf("Expected: %s\n", expected);
+        printf("Got:      %s\n", KASPA_CHARSET);
+    }
+    printf("=====================================\n\n");
+    
     // 1. Préparer données: version(0) + hash(32)
     uint8_t addr_data[33];
     addr_data[0] = 0x00;  // Version::PubKey
     memcpy(addr_data + 1, pubkey_hash, 32);
     
+    // *** DEBUG ***
+    printf("Step 1 - addr_data (33 bytes): ");
+        for(int i = 0; i < 33; i++) printf("%02x", addr_data[i]);
+    printf("\n");
+    
     // 2. Conversion 8→5 bits
     uint8_t payload_5bit[64];  // Largement suffisant
     size_t payload_len = kaspa_conv8to5(addr_data, 33, payload_5bit);
+    
+    // *** DEBUG ***
+    printf("Step 2 - payload_5bit (%zu bytes): ", payload_len);
+    for(size_t i = 0; i < payload_len; i++) {
+        printf("%02x", payload_5bit[i]);
+        if (payload_5bit[i] > 31) {
+            printf("(ERROR>31!)");
+        }
+    }
+    printf("\n");
+    
     
     // 3. Calcul checksum
     uint64_t checksum = kaspa_checksum(payload_5bit, payload_len, prefix);
@@ -136,6 +193,11 @@ int kaspa_encode_address(const uint8_t* pubkey_hash, const char* prefix, char* a
     // 4. Checksum en 5-bit
     uint8_t checksum_5bit[16];
     size_t checksum_len = kaspa_checksum_to_5bit(checksum, checksum_5bit);
+    
+    // *** DEBUG ***
+    printf("Step 4 - checksum_5bit (%zu bytes): ", checksum_len);
+        for(size_t i = 0; i < checksum_len; i++) printf("%02x", checksum_5bit[i]);
+        printf("\n");
     
     // 5. Assemblage final: payload + checksum
     uint8_t final_5bit[80];
@@ -224,4 +286,91 @@ int kaspa_decode_address(const char* address, uint8_t* pubkey_hash_out, char* pr
     memcpy(pubkey_hash_out, decoded_data + 1, 32);
     
     return KASE_OK;
+}
+
+// Helper pour conversion bits (si pas déjà présent)
+int bech32_convertbits(uint8_t* out, size_t* outlen, int outbits,
+                       const uint8_t* in, size_t inlen, int inbits, int pad) {
+    uint32_t val = 0;
+    int bits = 0;
+    uint32_t maxv = (((uint32_t)1) << outbits) - 1;
+    *outlen = 0;
+    
+    for (size_t i = 0; i < inlen; ++i) {
+        val = (val << inbits) | in[i];
+        bits += inbits;
+        while (bits >= outbits) {
+            bits -= outbits;
+            out[(*outlen)++] = (val >> bits) & maxv;
+        }
+    }
+    
+    if (pad) {
+        if (bits) {
+            out[(*outlen)++] = (val << (outbits - bits)) & maxv;
+        }
+    } else if (((val << (outbits - bits)) & maxv) || bits >= inbits) {
+        return KASE_ERR_ENCODE;
+    }
+    
+    return KASE_OK;
+}
+
+
+int kaspa_pubkey_to_address(const uint8_t* pubkey, char* address, size_t address_size, kase_network_type_t network) {
+    if (!pubkey || !address || address_size < 128) {
+        return KASE_ERR_INVALID;
+    }
+    /*
+    // 1. Hash DIRECT de la clé publique (pas de script)
+    uint8_t pubkey_hash[32];
+    if (blake2b(pubkey, 32, pubkey_hash, 32) != 0) {
+        return KASE_ERR_CRYPTO;
+    } */
+    
+    // 2. Encoder avec le format Kaspa natif
+    const char* hrp = (network == KASE_NETWORK_MAINNET) ? "kaspa" : "kaspatest";
+    //return kaspa_encode_address(pubkey_hash, hrp, address);
+    return kaspa_encode_address(pubkey, hrp, address);
+}
+
+
+int kaspa_pubkey_to_script_address(const uint8_t* pubkey, char* address, size_t address_size, kase_network_type_t network) {
+    if (!pubkey || !address || address_size < 128) {
+        return KASE_ERR_INVALID;
+    }
+    
+    // 1. Créer le script P2PK: OP_DATA32 + pubkey + OP_CHECKSIG
+    uint8_t script[34];
+    script[0] = 0x20;  // OP_DATA32
+    memcpy(script + 1, pubkey, 32);
+    script[33] = 0xac; // OP_CHECKSIG
+    
+    
+    // 2. Calculer le hash du script (BLAKE2b 256-bit)
+    uint8_t script_hash[32];
+    if (blake2b(script, 34, script_hash, 32) != 0) {
+        return KASE_ERR_CRYPTO;
+    }
+    
+    // 3. Ajouter le préfixe de version
+    uint8_t versioned_hash[33];
+    versioned_hash[0] = 0x00; // Testnet
+    memcpy(versioned_hash + 1, script_hash, 32);
+    
+    // 4. Convertir en format 5-bit pour Bech32m
+    uint8_t data[53];
+    size_t data_len;
+    if (bech32_convertbits(data, &data_len, 5, versioned_hash, 33, 8, 1) != KASE_OK) {
+        return KASE_ERR_ENCODE;  // ← Erreur d'encodage
+    }
+    
+    // 5. Encoder avec Bech32m  A CORRIGER
+    const char* hrp = (network == KASE_NETWORK_MAINNET) ? "kaspa" : "kaspatest";
+    //if (bech32_encode(address, hrp, data, data_len, BECH32_ENCODING_BECH32M) == 0) {
+    if (kaspa_encode_address(script_hash, hrp, address) != KASE_OK) {
+        return KASE_ERR_ENCODE;  // ← Erreur d'encodage
+    }
+    
+    return KASE_OK;  // ← Succès
 }

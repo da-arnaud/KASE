@@ -73,6 +73,9 @@ int bip340_pubkey_create(uint8_t *pubkey32, const uint8_t *seckey32) {
     if (bn_is_odd(&point.y)) {
         bn_subtract(&secp256k1.order, &k, &k);
         scalar_multiply(&secp256k1, &k, &point);
+        
+        // ← SAUVEGARDER la clé privée corrigée !
+                bn_write_be(&k, seckey32);
     }
     
     // Output x coordinate only
