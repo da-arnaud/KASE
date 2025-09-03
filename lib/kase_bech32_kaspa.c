@@ -90,45 +90,30 @@ uint64_t kaspa_checksum(const uint8_t* payload_5bit, size_t payload_len, const c
     size_t idx = 0;
     
     // 1. Ajouter préfixe en 5-bit
-    printf("DEBUG prefix 5bit: "); //*** DEBUG ***
+    printf("DEBUG prefix 5bit: ");
     for (size_t i = 0; i < prefix_len; i++) {
         full_data[idx] = prefix[i] & 0x1F;
         //full_data[idx] = (uint8_t)(prefix[i]) >> 2;
-        printf("%02x", full_data[idx]);
         idx++;
     }
     printf("\n");
     
     // 2. Séparateur (0)
     full_data[idx++] = 0;
-    printf("DEBUG separator: 00\n");  //*** DEBUG ***
+   
     
     // 3. Payload 5-bit
-    printf("DEBUG payload_5bit: ");
     memcpy(full_data + idx, payload_5bit, payload_len);
-    
-    for(size_t i = 0; i < payload_len; i++) {   //*** DEBUG ***
-            printf("%02x", full_data[idx + i]);
-        }
-        printf("\n");
     
     idx += payload_len;
     
     // 4. 8 zéros pour checksum
     memset(full_data + idx, 0, 8);
-    printf("DEBUG zeros: 00000000000000000000\n");
     idx += 8;
     
     // 5. Calcul polymod
-    printf("DEBUG total data for polymod (%zu bytes): ", idx);  // *** DEBUG ***
-    for(size_t i = 0; i < idx; i++) {
-            printf("%02x", full_data[i]);
-        }
-        printf("\n");
     uint64_t checksum = kaspa_polymod(full_data, idx);
-    
-    printf("DEBUG raw checksum: %016lx\n", checksum);
-    
+        
     free(full_data);
     return checksum;
 }
@@ -148,43 +133,16 @@ size_t kaspa_checksum_to_5bit(uint64_t checksum, uint8_t* output) {
 // Fonction encodage adresse
 int kaspa_encode_address(const uint8_t* pubkey_hash, const char* prefix, char* address_out) {
     
-    printf("CHARSET CHECK: %s\n", KASPA_CHARSET);
-    printf("CHARSET LENGTH: %zu\n", strlen(KASPA_CHARSET));
-
-    // Vérifier que ton charset est exactement celui-ci
-    const char* expected = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
-    if (strcmp(KASPA_CHARSET, expected) == 0) {
-        printf("✅ CHARSET CORRECT\n");
-    } else {
-        printf("❌ CHARSET INCORRECT!\n");
-        printf("Expected: %s\n", expected);
-        printf("Got:      %s\n", KASPA_CHARSET);
-    }
-    printf("=====================================\n\n");
     
     // 1. Préparer données: version(0) + hash(32)
     uint8_t addr_data[33];
     addr_data[0] = 0x00;  // Version::PubKey
     memcpy(addr_data + 1, pubkey_hash, 32);
     
-    // *** DEBUG ***
-    printf("Step 1 - addr_data (33 bytes): ");
-        for(int i = 0; i < 33; i++) printf("%02x", addr_data[i]);
-    printf("\n");
     
     // 2. Conversion 8→5 bits
     uint8_t payload_5bit[64];  // Largement suffisant
     size_t payload_len = kaspa_conv8to5(addr_data, 33, payload_5bit);
-    
-    // *** DEBUG ***
-    printf("Step 2 - payload_5bit (%zu bytes): ", payload_len);
-    for(size_t i = 0; i < payload_len; i++) {
-        printf("%02x", payload_5bit[i]);
-        if (payload_5bit[i] > 31) {
-            printf("(ERROR>31!)");
-        }
-    }
-    printf("\n");
     
     
     // 3. Calcul checksum
@@ -194,10 +152,6 @@ int kaspa_encode_address(const uint8_t* pubkey_hash, const char* prefix, char* a
     uint8_t checksum_5bit[16];
     size_t checksum_len = kaspa_checksum_to_5bit(checksum, checksum_5bit);
     
-    // *** DEBUG ***
-    printf("Step 4 - checksum_5bit (%zu bytes): ", checksum_len);
-        for(size_t i = 0; i < checksum_len; i++) printf("%02x", checksum_5bit[i]);
-        printf("\n");
     
     // 5. Assemblage final: payload + checksum
     uint8_t final_5bit[80];

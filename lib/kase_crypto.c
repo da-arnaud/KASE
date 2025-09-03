@@ -35,7 +35,7 @@ int kase_bip32_derive_key(const uint8_t* seed, size_t seed_len,
 
     // Derivation path: m/44'/111'/0'/0/0  (111 = Kaspa BIP44 coin type)
     hdnode_private_ckd_prime(&node, 44);
-    hdnode_private_ckd_prime(&node, 972);
+    hdnode_private_ckd_prime(&node, 111111);
     hdnode_private_ckd_prime(&node, 0);
     hdnode_private_ckd(&node, 0);
     hdnode_private_ckd(&node, 0);
@@ -50,9 +50,13 @@ int kase_bip32_derive_key(const uint8_t* seed, size_t seed_len,
 int kase_pubkey_to_kaspa_address(const uint8_t* pubkey, char* address_out, size_t max_len, kase_network_type_t network) {
     if (!pubkey || !address_out || max_len < 64) return KASE_ERR_INVALID;
 
-    // 1. Hash SHA256 de la clé publique
-    uint8_t sha256[32];
-    sha256_Raw(pubkey, 33, sha256);
+
+    // CORRECT: Hash BLAKE2B de la clé publique (comme dans kaspa_generate_address)
+    uint8_t hash160[32];
+        if (blake2b(pubkey, 33, hash160, 32) != 0) {
+            return KASE_ERR_ENCODE;
+        }
+    
 
     // 2. Déterminer le préfixe selon le réseau
     const char* prefix;
@@ -72,7 +76,8 @@ int kase_pubkey_to_kaspa_address(const uint8_t* pubkey, char* address_out, size_
     }
 
     // 3. Encoder avec le bon préfixe
-    int result = kaspa_encode_address(sha256, prefix, address_out);
+    int result = kaspa_encode_address(hash160, prefix, address_out);
+    printf("DEBUG in kase_pubkey_to_kaspa_address, generated address from hash160: %s\n", address_out);
     
     if (result != KASE_OK) {
         return KASE_ERR_ENCODE;

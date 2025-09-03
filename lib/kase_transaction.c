@@ -570,6 +570,7 @@ int kase_broadcast_transaction(const kase_transaction_t* tx, const uint8_t* priv
         sig_len += 64;
         sig_script[sig_len++] = KASPA_SIG_HASH_ALL; // 0x01
 
+
         // PAS DE PUBKEY dans signature_script !
         // La pubkey est dans le script_public_key des UTXOs !
         // 2. Push clé publique (32 bytes)

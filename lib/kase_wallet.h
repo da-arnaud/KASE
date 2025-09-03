@@ -31,11 +31,16 @@ kase_network_type_t kase_get_network(void);
 /**
  * Recover wallet from mnemonic (BIP39 + BIP32)
  */
+/*
 int kase_recover_wallet_from_seed(const char* mnemonic,
                                    const char* optional_passphrase,
                                    kase_wallet_t* out,
-                                   kase_network_type_t network);
+                                   kase_network_type_t network); */
 
+int kase_generate_wallet_with_mnemonic(const char* mnemonic,
+                                       const char* optional_passphrase,
+                                       kase_wallet_t* out,
+                                       kase_network_type_t network);
 
 int kase_generate_wallet(kase_wallet_t* out, kase_network_type_t network);
 /**
