@@ -25,11 +25,6 @@ static const char* KASPA_TESTNET_RPC_11 = "https://api-tn11.kaspa.org";
 
 
 
-int kaspa_calc_sighash(const kaspa_transaction_t *tx,
-                      int input_index,
-                      const kaspa_utxo_entry_t *utxo,
-                      uint8_t *sighash);
-
 // Conversion KAS <-> Sompi
 uint64_t kase_kas_to_sompi(double kas) {
     return (uint64_t)(kas * 100000000.0); // 1 KAS = 100M sompi
@@ -411,6 +406,8 @@ int kase_broadcast_transaction(const kase_transaction_t* tx, const uint8_t* priv
         kaspa_tx.lock_time = 0;
         kaspa_tx.gas = 0;
         kaspa_tx.payload_len = 0;
+        memset(kaspa_tx.subnetwork_id, 0, 20);
+        kaspa_tx.payload = NULL;
         
         // Convertir les inputs
         kaspa_tx.inputs = malloc(kaspa_tx.inputs_count * sizeof(kaspa_input_t));
@@ -452,13 +449,6 @@ int kase_broadcast_transaction(const kase_transaction_t* tx, const uint8_t* priv
         utxo_entry.script_public_key_len = script_len;
         hex_to_bytes(matching_utxo->script_public_key, utxo_entry.script_public_key, script_len);
         
-        printf("📄 Using real script: %s (len: %zu)\n", matching_utxo->script_public_key, script_len);
-        // Juste avant kaspa_calc_sighash ***BEBUG***
-        printf("🔍 Debug signature:\n");
-        printf("   UTXO amount: %llu\n", utxo_entry.amount);
-        printf("   UTXO script: %s\n", matching_utxo->script_public_key);
-        printf("   UTXO script len: %zu\n", utxo_entry.script_public_key_len);
-        printf("   KASPA_SIG_HASH_ALL: 0x%02x\n", KASPA_SIG_HASH_ALL);
         
         // Calculer le SigHash
         uint8_t sighash[32];
@@ -530,30 +520,6 @@ int kase_broadcast_transaction(const kase_transaction_t* tx, const uint8_t* priv
             return KASE_ERR_INVALID;
         }
         
-    
-
-        // *** AJOUTE LE NOUVEAU DEBUG ICI ***
-        printf("🔑 DEBUG COMPLET:\n");
-        printf("   from_address: %s\n", sender_address);
-        printf("   private_key (hex): ");
-        for (int k = 0; k < 32; k++) printf("%02x", private_key[k]);
-        printf("\n");
-
-        // Générer l'adresse depuis la clé privée pour vérification
-        uint8_t derived_pubkey[32];
-        if (bip340_pubkey_create(derived_pubkey, private_key) == 1) {
-            printf("   derived_pubkey: ");
-            for (int k = 0; k < 32; k++) printf("%02x", derived_pubkey[k]);
-            printf("\n");
-            
-            char derived_address[128];
-            //kase_network_type_t network = get_kaspa_rpc_endpoint();
-            if (kaspa_pubkey_to_address(derived_pubkey, derived_address, sizeof(derived_address), g_kase_network) == KASE_OK) {
-                printf("   derived_address: %s\n", derived_address);
-                printf("   MATCH: %s\n", strcmp(derived_address, sender_address) == 0 ? "✅ OUI" : "❌ NON");
-            }
-        }
-        
         
         // Debug de la signature générée  ***BEBUG***
         printf("   Generated signature: ");
@@ -561,6 +527,40 @@ int kase_broadcast_transaction(const kase_transaction_t* tx, const uint8_t* priv
         printf("\n");
         
         // 🎯 SIGNATURE SCRIPT KASPA CORRECT - SEULEMENT SIGNATURE !
+        /*
+        uint8_t sig_script[98];  // 1 + 64 + 1 + 32 + 1 = 99 bytes
+        size_t sig_len = 0;
+
+        // Format Kaspa: OP_DATA64 + signature(64) + OP_DATA32 + pubkey(32) + sighash_type(1)
+        sig_script[sig_len++] = 0x40; // OP_DATA64 = 64 bytes (signature)
+        memcpy(sig_script + sig_len, signature, 64);
+        sig_len += 64;
+
+        sig_script[sig_len++] = 0x20; // OP_DATA32 = 32 bytes (pubkey)
+        memcpy(sig_script + sig_len, public_key_schnorr, 32);  // ← Utiliser derived_pubkey !
+        sig_len += 32;
+
+        sig_script[sig_len++] = KASPA_SIG_HASH_ALL; // 0x01
+        */
+        // signature (64) + sighash type (1) dans UN SEUL push de 65 bytes
+        uint8_t sig_script[66];  // 1 + 64 + 1 = 66 bytes
+        size_t sig_len = 0;
+
+        // Format Kaspa : OP_DATA_65 + signature(64) + sighash_type(1)
+        sig_script[sig_len++] = 65; // OP_DATA_65 = 65 bytes de données
+        memcpy(sig_script + sig_len, signature, 64);
+        sig_len += 64;
+        sig_script[sig_len++] = KASPA_SIG_HASH_ALL; // 0x01
+        
+        // Vérifiez l'endianness de votre signature
+        printf("🔍 DEBUG _ DEBUG Signature bytes order:\n");
+        for (int i = 0; i < 64; i++) {
+            printf("%02x", signature[i]);
+            if (i % 8 == 7) printf(" ");
+        }
+        printf("\n");
+        
+        /*
         uint8_t sig_script[66];  // 1 + 64 + 1 = 66 bytes
         size_t sig_len = 0;
 
@@ -569,7 +569,7 @@ int kase_broadcast_transaction(const kase_transaction_t* tx, const uint8_t* priv
         memcpy(sig_script + sig_len, signature, 64);
         sig_len += 64;
         sig_script[sig_len++] = KASPA_SIG_HASH_ALL; // 0x01
-
+         */
 
         // PAS DE PUBKEY dans signature_script !
         // La pubkey est dans le script_public_key des UTXOs !
@@ -589,6 +589,16 @@ int kase_broadcast_transaction(const kase_transaction_t* tx, const uint8_t* priv
         // Convertir en hex
         bytes_to_hex(sig_script, sig_len, signed_tx.inputs[i].signature_script,
                      sizeof(signed_tx.inputs[i].signature_script));
+        
+        // 🔍 DEBUG CRITIQUE
+        printf("🚨 DEBUG ENCODING:\n");
+        printf("   sig_len: %zu\n", sig_len);
+        printf("   Buffer size: %zu\n", sizeof(signed_tx.inputs[i].signature_script));
+        printf("   Raw bytes: ");
+        for (size_t k = 0; k < sig_len; k++) printf("%02x", sig_script[k]);
+        printf("\n");
+        printf("   Encoded hex: %s\n", signed_tx.inputs[i].signature_script);
+        printf("   Encoded len: %zu\n", strlen(signed_tx.inputs[i].signature_script));
 
         printf("✅ Input %zu signed successfully (sig_script_len: %zu bytes)\n", i, sig_len);
         
@@ -822,6 +832,18 @@ static int serialize_transaction_for_hash(const kase_transaction_t* tx, uint8_t*
 // Fonctions de HASH et signature de transaction
 // Hash d'un outpoint
 static void hash_outpoint(blake2b_state *hasher, const kaspa_outpoint_t *outpoint) {
+    
+    printf("🔍 *** DEBUG *** hash_outpoint DEBUG:\n"); // *** DEBUG ***
+        printf("   TX ID (hex): ");
+        for(int i = 0; i < 32; i++) {
+            printf("%02x", outpoint->transaction_id[i]);
+        }
+        printf("\n   TX ID (raw): ");
+        for(int i = 0; i < 32; i++) {
+            printf("%c", outpoint->transaction_id[i] >= 32 && outpoint->transaction_id[i] < 127 ? outpoint->transaction_id[i] : '.');
+        }
+        printf("\n   Index: %u\n", outpoint->index);
+        
     blake2b_Update(hasher, outpoint->transaction_id, 32);
     uint8_t index_bytes[4];
     index_bytes[0] = outpoint->index & 0xFF;
@@ -832,11 +854,37 @@ static void hash_outpoint(blake2b_state *hasher, const kaspa_outpoint_t *outpoin
 }
 
 // Hash d'un script public key
+/*
 static void hash_script_public_key(blake2b_state *hasher, const uint8_t *script, size_t len) {
     uint8_t len_bytes[8];
     write_u64_le(len_bytes, len);
     blake2b_Update(hasher, len_bytes, 8);
     blake2b_Update(hasher, script, len);
+}
+*/
+static void hash_script_public_key(blake2b_state *hasher, const uint8_t *script, size_t len) {
+    // Version du script (2 bytes, toujours 0x0000 pour Kaspa)
+    uint8_t version_bytes[2] = {0x00, 0x00};
+    blake2b_Update(hasher, version_bytes, 2);
+    printf("   --------------DEBUG  Script version: 0x%02x%02x\n", version_bytes[0], version_bytes[1]);
+    
+    
+    // Script avec longueur variable
+        printf("   Script len: %zu\n", len);
+        printf("   Var len encoding: ");
+    if (len < 0xfd) {
+        uint8_t len_byte = (uint8_t)len;
+        
+    }
+    // Script avec longueur variable
+    write_var_bytes(hasher, script, len);
+    
+    printf("   Script data: ");
+        for (size_t i = 0; i < len; i++) {
+            printf("%02x", script[i]);
+        }
+        printf("\n");
+    
 }
 
 // Hash des previous outputs
@@ -922,6 +970,7 @@ int kaspa_calc_sighash(const kaspa_transaction_t *tx,
                       int input_index,
                       const kaspa_utxo_entry_t *utxo,
                       uint8_t *sighash) {
+    printf("🔍 =============== SIGHASH DEBUG ===============\n");
     blake2b_state hasher;
     if (blake2b_Init(&hasher, 32) != 0) return -1;
     
@@ -929,24 +978,36 @@ int kaspa_calc_sighash(const kaspa_transaction_t *tx,
     uint8_t version_bytes[2];
     write_u16_le(version_bytes, tx->version);
     blake2b_Update(&hasher, version_bytes, 2);
+    printf("1. Version: %u (0x%02x%02x)\n", tx->version, version_bytes[0], version_bytes[1]);
     
     // 2. Previous outputs hash (32 bytes)
     uint8_t prev_hash[32];
-    previous_outputs_hash(tx, prev_hash);
+    previous_outputs_hash(tx, prev_hash);  //hash_point appelé dans previous_outputs_hash, appel faux
     blake2b_Update(&hasher, prev_hash, 32);
+    printf("2. Prev outputs hash: ");
+        for(int i = 0; i < 8; i++) printf("%02x", prev_hash[i]);
+        printf("...\n");
     
     // 3. Sequences hash (32 bytes)
     uint8_t seq_hash[32];
     sequences_hash(tx, seq_hash);
     blake2b_Update(&hasher, seq_hash, 32);
+    printf("3. Sequences hash: ");
+        for(int i = 0; i < 8; i++) printf("%02x", seq_hash[i]);
+        printf("...\n");
     
     // 4. Sig op counts hash (32 bytes)
     uint8_t sigop_hash[32];
     sig_op_counts_hash(tx, sigop_hash);
     blake2b_Update(&hasher, sigop_hash, 32);
+    printf("4. SigOp counts hash: ");
+        for(int i = 0; i < 8; i++) printf("%02x", sigop_hash[i]);
+        printf("...\n");
     
     // 5. Current input outpoint
-    hash_outpoint(&hasher, &tx->inputs[input_index].previous_outpoint);
+    printf("5. Outpoint: %s:%u\n", tx->inputs[input_index].previous_outpoint.transaction_id,
+               tx->inputs[input_index].previous_outpoint.index);
+    hash_outpoint(&hasher, &tx->inputs[input_index].previous_outpoint);  // deuxième appel de hash_output, valide
     
     // 6. Current input script public key
     hash_script_public_key(&hasher, utxo->script_public_key, utxo->script_public_key_len);
@@ -955,41 +1016,56 @@ int kaspa_calc_sighash(const kaspa_transaction_t *tx,
     uint8_t amount_bytes[8];
     write_u64_le(amount_bytes, utxo->amount);
     blake2b_Update(&hasher, amount_bytes, 8);
+    printf("7. Amount: %llu\n", utxo->amount);
     
     // 8. Current input sequence (8 bytes LE)
     uint8_t seq_bytes[8];
     write_u64_le(seq_bytes, tx->inputs[input_index].sequence);
     blake2b_Update(&hasher, seq_bytes, 8);
+    printf("8. Sequence: %llu\n", tx->inputs[input_index].sequence);
     
     // 9. Current input sig_op_count (1 byte)
     blake2b_Update(&hasher, &tx->inputs[input_index].sig_op_count, 1);
+    printf("9. SigOp count: %u\n", tx->inputs[input_index].sig_op_count);
     
     // 10. Outputs hash (32 bytes)
     uint8_t out_hash[32];
     outputs_hash(tx, out_hash);
     blake2b_Update(&hasher, out_hash, 32);
+    printf("10. Outputs hash: ");
+        for(int i = 0; i < 8; i++) printf("%02x", out_hash[i]);
+        printf("...\n");
     
     // 11. Lock time (8 bytes LE)
     uint8_t lock_bytes[8];
     write_u64_le(lock_bytes, tx->lock_time);
     blake2b_Update(&hasher, lock_bytes, 8);
+    printf("11. Lock time: %llu\n", tx->lock_time);
     
     // 12. Subnetwork ID (20 bytes)
     blake2b_Update(&hasher, tx->subnetwork_id, 20);
+    printf("12. Subnetwork ID: ");
+        for(int i = 0; i < 8; i++) printf("%02x", tx->subnetwork_id[i]);
+    printf("...\n");
     
     // 13. Gas (8 bytes LE)
     uint8_t gas_bytes[8];
     write_u64_le(gas_bytes, tx->gas);
     blake2b_Update(&hasher, gas_bytes, 8);
+    printf("13. Gas: %llu\n", tx->gas);
     
     // 14. Payload hash (32 bytes)
     uint8_t pay_hash[32];
     payload_hash(tx, pay_hash);
     blake2b_Update(&hasher, pay_hash, 32);
+    printf("14. Payload hash: ");
+        for(int i = 0; i < 8; i++) printf("%02x", pay_hash[i]);
+        printf("...\n");
     
     // 15. SigHash type (1 byte)
     uint8_t sighash_type = KASPA_SIG_HASH_ALL;
     blake2b_Update(&hasher, &sighash_type, 1);
+    printf("15. SigHash type: 0x%02x\n", sighash_type);
     
     return blake2b_Final(&hasher, sighash, 32);
 }
@@ -1067,4 +1143,41 @@ static int address_to_script_pubkey(const char* address, char* script_hex, size_
     printf("✅ Script généré (%zu chars): %s\n", strlen(script_hex), script_hex);
     
     return KASE_OK;
+}
+
+static void write_u32_le(uint8_t *buf, uint32_t value) {
+    buf[0] = value & 0xff;
+    buf[1] = (value >> 8) & 0xff;
+    buf[2] = (value >> 16) & 0xff;
+    buf[3] = (value >> 24) & 0xff;
+}
+
+static void write_var_bytes(blake2b_state *hasher, const uint8_t *data, size_t len) {
+    // Encode la longueur en varint
+    printf("🔍 ----------------DEBUG WW write_var_bytes: len=%zu\n", len);
+    if (len < 0xfd) {
+        uint8_t len_byte = (uint8_t)len;
+        blake2b_Update(hasher, &len_byte, 1);
+    } else if (len <= 0xffff) {
+        uint8_t marker = 0xfd;
+        blake2b_Update(hasher, &marker, 1);
+        uint8_t len_bytes[2];
+        write_u16_le(len_bytes, (uint16_t)len);
+        blake2b_Update(hasher, len_bytes, 2);
+    } else if (len <= 0xffffffff) {
+        uint8_t marker = 0xfe;
+        blake2b_Update(hasher, &marker, 1);
+        uint8_t len_bytes[4];
+        write_u32_le(len_bytes, (uint32_t)len);
+        blake2b_Update(hasher, len_bytes, 4);
+    } else {
+        uint8_t marker = 0xff;
+        blake2b_Update(hasher, &marker, 1);
+        uint8_t len_bytes[8];
+        write_u64_le(len_bytes, len);
+        blake2b_Update(hasher, len_bytes, 8);
+    }
+    
+    // Puis les données
+    blake2b_Update(hasher, data, len);
 }

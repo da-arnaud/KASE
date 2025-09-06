@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdbool.h>
+#include "blake2b.h"
 
 #include <curl/curl.h>  // For http requests
 #include <json-c/json.h> // For JSON parser
@@ -156,6 +157,8 @@ uint64_t kase_kas_to_sompi(double kas);
 double kase_sompi_to_kas(uint64_t sompi);
 
 static int address_to_script_pubkey(const char* address, char* script_hex, size_t script_hex_size);
+static void write_var_bytes(blake2b_state *hasher, const uint8_t *data, size_t len);
+static void write_u32_le(uint8_t *buf, uint32_t value);
 
 #ifdef __cplusplus
 }
