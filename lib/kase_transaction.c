@@ -77,6 +77,27 @@ static void write_u64_le(uint8_t *buf, uint64_t val) {
     }
 }
 
+// Pour l’INPUT signé (SigHash items 7–9)
+static void hash_current_input_spk(blake2b_state* h, uint16_t ver,
+                                   const uint8_t* spk, size_t len) {
+    uint8_t vb[2]; write_u16_le(vb, ver);         // 7. ScriptPubKeyVersion (uint16 LE)
+    blake2b_Update(h, vb, 2);
+
+    uint8_t lb[8]; write_u64_le(lb, (uint64_t)len); // 8. ScriptPubKey.length (uint64 LE)
+    blake2b_Update(h, lb, 8);
+
+    blake2b_Update(h, spk, len);                  // 9. ScriptPubKey (bytes du script SEULS)
+}
+
+// Pour outputsHash (ScriptPublicKey = Version + Script var-bytes)
+static void hash_output_spk(blake2b_state* h, uint16_t ver,
+                            const uint8_t* spk, size_t len) {
+    uint8_t vb[2]; write_u16_le(vb, ver);           // Version (uint16 LE)
+    blake2b_Update(h, vb, 2);
+    write_var_bytes(h, spk, len);                   // Script (varint + data) – une seule fois
+}
+
+
 void bytes_to_hex(const uint8_t* bytes, size_t len, char* hex_str, size_t hex_str_size) {
     if (hex_str_size < len * 2 + 1) return;
     
@@ -493,15 +514,27 @@ int kase_broadcast_transaction(const kase_transaction_t* tx, const uint8_t* priv
         }
         // *** DEBUG ***
         // Debug de la clé publique générée
-        printf("🔑 Debug clés:\n");
+        /*printf("🔑 Debug clés:\n");
         printf("   Private key: ");
         for (int k = 0; k < 32; k++) printf("%02x", private_key[k]);
         printf("\n");
         printf("   Generated pubkey: ");
         for (int k = 0; k < 32; k++) printf("%02x", public_key_schnorr[k]);
         printf("\n");
-        printf("   UTXO script pubkey: %s\n", matching_utxo->script_public_key);
+        printf("   UTXO script pubkey: %s\n", matching_utxo->script_public_key);*/
         
+        if (utxo_entry.script_public_key_len != 34 ||
+            utxo_entry.script_public_key[0] != 0x20 ||
+            utxo_entry.script_public_key[33] != 0xac) {
+            fprintf(stderr, "Prevout non-P2PK v0 (len=%zu)\n", utxo_entry.script_public_key_len);
+            return KASE_ERR_INVALID;
+        }
+        // Compare x-only pubkey
+        if (memcmp(utxo_entry.script_public_key + 1, public_key_schnorr, 32) != 0) {
+            fprintf(stderr, "Mismatch pubkey: derived != prevout\n");
+            return KASE_ERR_INVALID;
+        }
+            
         
         
         
@@ -519,7 +552,10 @@ int kase_broadcast_transaction(const kase_transaction_t* tx, const uint8_t* priv
             free(utxos);
             return KASE_ERR_INVALID;
         }
-        
+        if (!bip340_verify(signature, sighash, public_key_schnorr)) {
+            fprintf(stderr, "Local Schnorr verify failed (digest or key mismatch)\n");
+            return KASE_ERR_INVALID;
+        }
         
         // Debug de la signature générée  ***BEBUG***
         printf("   Generated signature: ");
@@ -926,7 +962,7 @@ static void sig_op_counts_hash(const kaspa_transaction_t *tx, uint8_t *hash) {
 }
 
 // Hash des outputs
-static void outputs_hash(const kaspa_transaction_t *tx, uint8_t *hash) {
+static void outputs_hash1(const kaspa_transaction_t *tx, uint8_t *hash) {
     blake2b_state hasher;
     blake2b_Init(&hasher, 32);
     
@@ -947,10 +983,34 @@ static void outputs_hash(const kaspa_transaction_t *tx, uint8_t *hash) {
     }
     
     blake2b_Final(&hasher, hash, 32);
+    
 }
 
+// Hash des outputs
+static void outputs_hash(const kaspa_transaction_t *tx, uint8_t *out32)
+{
+    blake2b_state h;
+    blake2b_Init(&h, 32);
+
+    for (size_t i = 0; i < tx->outputs_count; i++) {
+        const kaspa_output_t* o = &tx->outputs[i];
+
+        // Value (uint64 LE)
+        uint8_t valb[8];
+        write_u64_le(valb, o->value);
+        blake2b_Update(&h, valb, 8);
+
+        // ScriptPublicKey = Version (u16 LE) + Script (var-bytes)
+        hash_output_spk(&h, o->script_version, o->script_public_key, o->script_public_key_len);
+    }
+
+    blake2b_Final(&h, out32, 32);
+}
+
+
+
 // Hash du payload
-static void payload_hash(const kaspa_transaction_t *tx, uint8_t *hash) {
+static void payload_hash1(const kaspa_transaction_t *tx, uint8_t *hash) {
     blake2b_state hasher;
     blake2b_Init(&hasher, 32);
     
@@ -964,6 +1024,36 @@ static void payload_hash(const kaspa_transaction_t *tx, uint8_t *hash) {
     
     blake2b_Final(&hasher, hash, 32);
 }
+
+// Nouvelle implémentation
+static void payload_hash(uint8_t out32[32],
+                         const uint8_t subnetwork_id[20],
+                         const uint8_t* payload, size_t payload_len)
+{
+    // Native tx ? (SubnetworkID = 20 octets à 0) => payloadHash = 32 zéros
+    bool is_native = true;
+    for (int i = 0; i < 20; ++i) {
+        if (subnetwork_id[i] != 0) { is_native = false; break; }
+    }
+
+    if (is_native) {
+        memset(out32, 0, 32);
+        return;
+    }
+
+    blake2b_state h;
+    blake2b_Init(&h, 32);
+    if (payload_len > 0 && payload) {
+        blake2b_Update(&h, payload, payload_len);  // hash du payload (pas (len||payload))
+    }
+    blake2b_Final(&h, out32, 32);
+}
+
+// Shim compatible avec l’ancien appel : payload_hash(tx, out32)
+static inline void payload_hash_from_tx(const kaspa_transaction_t* tx, uint8_t out32[32]) {
+    payload_hash(out32, tx->subnetwork_id, tx->payload, tx->payload_len);
+}
+
 
 // Calcul COMPLET du SigHash Kaspa
 int kaspa_calc_sighash(const kaspa_transaction_t *tx,
@@ -1010,7 +1100,11 @@ int kaspa_calc_sighash(const kaspa_transaction_t *tx,
     hash_outpoint(&hasher, &tx->inputs[input_index].previous_outpoint);  // deuxième appel de hash_output, valide
     
     // 6. Current input script public key
-    hash_script_public_key(&hasher, utxo->script_public_key, utxo->script_public_key_len);
+    //hash_script_public_key(&hasher, utxo->script_public_key, utxo->script_public_key_len);
+    hash_current_input_spk(&hasher,
+        /*ver=*/0,                         // P2PK v0
+        utxo->script_public_key,
+        utxo->script_public_key_len);
     
     // 7. Current input amount (8 bytes LE)
     uint8_t amount_bytes[8];
@@ -1056,7 +1150,7 @@ int kaspa_calc_sighash(const kaspa_transaction_t *tx,
     
     // 14. Payload hash (32 bytes)
     uint8_t pay_hash[32];
-    payload_hash(tx, pay_hash);
+    payload_hash_from_tx(tx, pay_hash);
     blake2b_Update(&hasher, pay_hash, 32);
     printf("14. Payload hash: ");
         for(int i = 0; i < 8; i++) printf("%02x", pay_hash[i]);
