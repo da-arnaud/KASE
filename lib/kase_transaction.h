@@ -19,6 +19,14 @@
 #include <curl/curl.h>  // For http requests
 #include <json-c/json.h> // For JSON parser
 
+
+#include "kase_secp_ref.h"
+
+
+#ifndef KASE_USE_SECP_SIG
+#define KASE_USE_SECP_SIG 1   // 0 = utiliser la signature maison ; 1 = utiliser la signature libsecp
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
